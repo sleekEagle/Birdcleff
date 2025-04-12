@@ -46,6 +46,8 @@ class BirdDataset(Dataset):
         self.n_split = n_split
         self.mode = mode
         df = pd.read_csv(cfg.TRAIN_CSV_PATH)
+        df['label'], unique_categories = pd.factorize(df['primary_label'])
+        self.num_classes = len(unique_categories)
         #read splits file
         with open(cfg.SPLIT_FILE, "r") as json_file:
             self.splits = json.load(json_file)
@@ -61,13 +63,16 @@ class BirdDataset(Dataset):
 
     def __len__(self):
         return len(self.data_df)
+    
+    def get_num_classses(self):
+        return self.num_classes
 
     def check_str_in_list(self,f, lst):
         return any(x in f for x in lst)
     
     def __getitem__(self, idx):
-        d = self.data_df.iloc[idx]
-        path = os.path.join(self.cfg.TRAIN_AUDIO_PATH, d.filename)
+        data_row = self.data_df.iloc[idx]
+        path = os.path.join(self.cfg.TRAIN_AUDIO_PATH, data_row.filename)
         audio_data, _ = librosa.load(path, sr=self.cfg.FS)
         n_samples = int(self.cfg.FS * self.cfg.TARGET_DURATION)
         n_seg = math.ceil(audio_data.shape[0]/(n_samples))
@@ -111,8 +116,12 @@ class BirdDataset(Dataset):
             # plt.title('Linear Spectrogram (Magnitude)')
             # plt.show()
             
+        label = data_row['label']
+        label_oh = torch.nn.functional.one_hot(torch.tensor(label), num_classes=self.num_classes)
+        
         data = {}
         data['spec'] = spec
+        data['label'] = label_oh
         return data
     
 class BirdModule(LightningDataModule):
@@ -120,16 +129,20 @@ class BirdModule(LightningDataModule):
         super().__init__()
         self.cfg=cfg
         self.n_split = n_split
+        self.num_classes = -1
 
     def setup(self, stage: Optional[str] = None) -> None:
         self.train_dataset=BirdDataset(self.cfg,mode='TRAIN',
                                         split=self.cfg.splits.type,
                                         n_split=self.n_split)
+        self.num_classes = self.train_dataset.get_num_classses()
         self.val_dataset=BirdDataset(self.cfg,mode='VAL',
                                       split=self.cfg.splits.type,
                                       n_split=self.n_split)
         
-
+    def get_num_classes(self):
+        return self.num_classes
+    
     def train_dataloader(self) -> DataLoader:
         return DataLoader(self.train_dataset,
                             batch_size=self.cfg.bs,
