@@ -1,0 +1,21 @@
+seed: 42
+num_workers: 4
+FS: 32000
+TARGET_DURATION: 5.0
+TRAIN_AUDIO_PATH: 'D:\\birdclef-2025\\train_audio\\'
+TAXONOMY_PATH: 'D:\\birdclef-2025\\taxonomy.csv'
+TRAIN_CSV_PATH: 'D:\\birdclef-2025\\train.csv'
+SPLIT_FILE: 'D:\\birdclef-2025\\splits.json'
+bs: 8
+lr: 1e-3
+epochs: 100
+splits: 
+  type: 'fold'
+  n_folds: 5
+  split_path: ''
+spectrogram:
+  type: linear
+  linear:
+    n_fft: 2048
+    hop_length: 512
+
