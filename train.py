@@ -25,7 +25,7 @@ def train(cfg: DictConfig) -> None:
                 devices=1,
                 strategy='auto',
                 max_epochs=cfg.epochs,
-                check_val_every_n_epoch=5,
+                check_val_every_n_epoch=1,
                 enable_progress_bar=True)
     trainer.fit(model,
             train_dataloaders=train_loader,
