@@ -6,7 +6,7 @@ TRAIN_AUDIO_PATH: 'D:\\birdclef-2025\\train_audio\\'
 TAXONOMY_PATH: 'D:\\birdclef-2025\\taxonomy.csv'
 TRAIN_CSV_PATH: 'D:\\birdclef-2025\\train.csv'
 SPLIT_FILE: 'D:\\birdclef-2025\\splits.json'
-bs: 8
+bs: 4
 lr: 1e-3
 epochs: 100
 splits: 

@@ -40,89 +40,87 @@ def calc_duration_stats(data_path):
             durations.append(duration)
 
 class BirdDataset(Dataset):
-    def __init__(self, cfg, mode='TRAIN', split='fold', n_split=1):
+    def __init__(self, cfg, mode='TRAIN', split='fold', n_split=1, data_dict=None,num_classes=1):
         
         self.cfg=cfg
         self.n_split = n_split
         self.mode = mode
-        df = pd.read_csv(cfg.TRAIN_CSV_PATH)
-        df['label'], unique_categories = pd.factorize(df['primary_label'])
-        self.num_classes = len(unique_categories)
-        #read splits file
+        self.data_dict = data_dict
+        self.num_classes = num_classes
+
+        # read splits file
         with open(cfg.SPLIT_FILE, "r") as json_file:
             self.splits = json.load(json_file)
-        idx = self.splits[str(n_split)][mode]
-        self.data_df = df.iloc[idx]
-        self.transform = transforms.Compose([
-                    transforms.ToTensor(),
-                    transforms.Resize((256,256))          # Resize shorter side to 256 (aspect ratio maintained)
-                ])
-
-        # train_audio_files = explore_audio_directory(cfg.TRAIN_AUDIO_PATH)
-        # print(f"Number of audio files: {len(train_audio_files)}")
+        self.valid_indices = self.splits[str(n_split)][mode]
 
     def __len__(self):
-        return len(self.data_df)
-    
-    def get_num_classses(self):
-        return self.num_classes
+        return len(self.valid_indices)
 
     def check_str_in_list(self,f, lst):
         return any(x in f for x in lst)
     
     def __getitem__(self, idx):
-        data_row = self.data_df.iloc[idx]
-        path = os.path.join(self.cfg.TRAIN_AUDIO_PATH, data_row.filename)
-        audio_data, _ = librosa.load(path, sr=self.cfg.FS)
-        n_samples = int(self.cfg.FS * self.cfg.TARGET_DURATION)
-        n_seg = math.ceil(audio_data.shape[0]/(n_samples))
-        pad_len = int(n_seg * self.cfg.FS * self.cfg.TARGET_DURATION - audio_data.shape[0])
-        if pad_len > 0:
-            audio_data = np.pad(audio_data, (0, pad_len), mode='constant')
-        else:
-            audio_data = audio_data[:n_seg * n_samples]
-
+        i = self.valid_indices[idx]
+        label = self.data_dict[i]['label']
+        spec = self.data_dict[i]['spec']
+        #select one spectrogram in random for training
         if self.mode == 'TRAIN':
-            #select a segment in random
-            start = np.random.randint(0, n_seg) * n_samples
-            data = audio_data[start:start+n_samples]
-            data = np.expand_dims(data, axis=1)
-        elif self.mode == 'VAL':
-            data = audio_data.reshape(-1, n_seg)
+            random_int = np.random.randint(0, spec.size(0))
+            spec = spec[random_int].unsqueeze(0)
 
-        #normalize
-        data = (data - np.mean(data)) / np.std(data)
-        data = np.swapaxes(data, 0, 1)
-        s_cfg = self.cfg.spectrogram
-        spec = torch.empty(0)
-        if s_cfg.type == 'linear':
-            for d in data:
-                stft = librosa.stft(d, n_fft=s_cfg.linear.n_fft,
-                                    hop_length=s_cfg.linear.hop_length,
-                                    win_length=s_cfg.linear.n_fft)
-                magnitude_spectrogram = np.abs(stft)
-                power_spectrogram = magnitude_spectrogram ** 2
-                spec = torch.concat([spec,self.transform(power_spectrogram)],dim=0)
-
-            # import matplotlib.pyplot as plt
-            # plt.figure(figsize=(10, 4))
-            # librosa.display.specshow(power_spectrogram, 
-            #                         sr=self.cfg.FS, 
-            #                         hop_length=s_cfg.linear.hop_length, 
-            #                         x_axis='time', 
-            #                         y_axis='linear',
-            #                         cmap='viridis')
-            # plt.colorbar(label='Magnitude')
-            # plt.title('Linear Spectrogram (Magnitude)')
-            # plt.show()
-            
-        label = data_row['label']
         label_oh = torch.nn.functional.one_hot(torch.tensor(label), num_classes=self.num_classes)
         
         data = {}
         data['spec'] = spec
         data['label'] = label_oh
         return data
+    
+
+def read_all_data(cfg):
+        data_df = pd.read_csv(cfg.TRAIN_CSV_PATH)
+        data_df['label'], unique_categories = pd.factorize(data_df['primary_label'])
+        num_classes = len(unique_categories)
+        transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Resize((256,256))          # Resize shorter side to 256 (aspect ratio maintained)
+                ])
+
+        data_dict = {}
+        for idx in range(len(data_df)):
+            if idx == 100:
+                break
+            print(f'Loading data {idx} of {len(data_df)}',end='\r')
+            data_row = data_df.iloc[idx]
+            path = os.path.join(cfg.TRAIN_AUDIO_PATH, data_row.filename)
+            audio_data, _ = librosa.load(path, sr=cfg.FS)
+            n_samples = int(cfg.FS * cfg.TARGET_DURATION)
+            n_seg = math.ceil(audio_data.shape[0]/(n_samples))
+            pad_len = int(n_seg * cfg.FS * cfg.TARGET_DURATION - audio_data.shape[0])
+            if pad_len > 0:
+                audio_data = np.pad(audio_data, (0, pad_len), mode='constant')
+            else:
+                audio_data = audio_data[:n_seg * n_samples]
+            data = audio_data.reshape(-1, n_seg)
+            
+            #normalize
+            data = (data - np.mean(data)) / np.std(data)
+            data = np.swapaxes(data, 0, 1)
+            s_cfg = cfg.spectrogram
+            spec = torch.empty(0)
+            if s_cfg.type == 'linear':
+                for d in data:
+                    stft = librosa.stft(d, n_fft=s_cfg.linear.n_fft,
+                                        hop_length=s_cfg.linear.hop_length,
+                                        win_length=s_cfg.linear.n_fft)
+                    magnitude_spectrogram = np.abs(stft)
+                    power_spectrogram = magnitude_spectrogram ** 2
+                    spec = torch.concat([spec,transform(power_spectrogram)],dim=0)
+            data_dict[idx] = {
+                'spec': spec,
+                'label': data_row['label']
+            }
+
+        return data_dict, num_classes
     
 class BirdModule(LightningDataModule):
     def __init__(self,cfg,n_split=1):
@@ -132,13 +130,17 @@ class BirdModule(LightningDataModule):
         self.num_classes = -1
 
     def setup(self, stage: Optional[str] = None) -> None:
+        data_dict, self.num_classes = read_all_data(self.cfg)
         self.train_dataset=BirdDataset(self.cfg,mode='TRAIN',
                                         split=self.cfg.splits.type,
-                                        n_split=self.n_split)
-        self.num_classes = self.train_dataset.get_num_classses()
+                                        n_split=self.n_split,
+                                        data_dict=data_dict,
+                                        num_classes=self.num_classes)
         self.val_dataset=BirdDataset(self.cfg,mode='VAL',
                                       split=self.cfg.splits.type,
-                                      n_split=self.n_split)
+                                      n_split=self.n_split,
+                                      data_dict=data_dict,
+                                      num_classes=self.num_classes)
         
     def get_num_classes(self):
         return self.num_classes

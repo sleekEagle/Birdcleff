@@ -4,6 +4,8 @@ from dataloader import BirdModule
 from pytorch_lightning.trainer import Trainer
 from birdmodels.BirdModel import BirdModel
 from lightning.pytorch.loggers import WandbLogger
+from pytorch_lightning.loggers import TensorBoardLogger
+
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def train(cfg: DictConfig) -> None:
@@ -12,6 +14,12 @@ def train(cfg: DictConfig) -> None:
     #*******logging*********
     wandb_logger = WandbLogger(entity=cfg.wandb_entity,
                                project="Birdcleff")
+    
+    tb_logger = TensorBoardLogger(
+        save_dir="C:\\Users\\lahir\\Downloads\\logs",  # Saves to Kaggle's working directory
+        name="tb_logs",             # Subfolder name
+        version="exp1"              # Experiment version
+    )
 
     datam = BirdModule(cfg, n_split=1)
     datam.setup()
@@ -20,7 +28,7 @@ def train(cfg: DictConfig) -> None:
 
     model=BirdModel(cfg,fold=1,num_classes=datam.get_num_classes())
 
-    trainer=Trainer(logger=wandb_logger,
+    trainer=Trainer(logger=tb_logger,
                 accelerator='gpu',
                 devices=1,
                 strategy='auto',
