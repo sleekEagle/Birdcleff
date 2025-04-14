@@ -18,6 +18,7 @@ spectrogram:
   linear:
     n_fft: 2048
     hop_length: 512
+  output_path: 'D:\\data'
 
 #*****logging****
 wandb_entity: 'blurdepth'

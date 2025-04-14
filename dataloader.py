@@ -76,51 +76,7 @@ class BirdDataset(Dataset):
         return data
     
 
-def read_all_data(cfg):
-        data_df = pd.read_csv(cfg.TRAIN_CSV_PATH)
-        data_df['label'], unique_categories = pd.factorize(data_df['primary_label'])
-        num_classes = len(unique_categories)
-        transform = transforms.Compose([
-                    transforms.ToTensor(),
-                    transforms.Resize((256,256))          # Resize shorter side to 256 (aspect ratio maintained)
-                ])
 
-        data_dict = {}
-        for idx in range(len(data_df)):
-            if idx == 100:
-                break
-            print(f'Loading data {idx} of {len(data_df)}',end='\r')
-            data_row = data_df.iloc[idx]
-            path = os.path.join(cfg.TRAIN_AUDIO_PATH, data_row.filename)
-            audio_data, _ = librosa.load(path, sr=cfg.FS)
-            n_samples = int(cfg.FS * cfg.TARGET_DURATION)
-            n_seg = math.ceil(audio_data.shape[0]/(n_samples))
-            pad_len = int(n_seg * cfg.FS * cfg.TARGET_DURATION - audio_data.shape[0])
-            if pad_len > 0:
-                audio_data = np.pad(audio_data, (0, pad_len), mode='constant')
-            else:
-                audio_data = audio_data[:n_seg * n_samples]
-            data = audio_data.reshape(-1, n_seg)
-            
-            #normalize
-            data = (data - np.mean(data)) / np.std(data)
-            data = np.swapaxes(data, 0, 1)
-            s_cfg = cfg.spectrogram
-            spec = torch.empty(0)
-            if s_cfg.type == 'linear':
-                for d in data:
-                    stft = librosa.stft(d, n_fft=s_cfg.linear.n_fft,
-                                        hop_length=s_cfg.linear.hop_length,
-                                        win_length=s_cfg.linear.n_fft)
-                    magnitude_spectrogram = np.abs(stft)
-                    power_spectrogram = magnitude_spectrogram ** 2
-                    spec = torch.concat([spec,transform(power_spectrogram)],dim=0)
-            data_dict[idx] = {
-                'spec': spec,
-                'label': data_row['label']
-            }
-
-        return data_dict, num_classes
     
 class BirdModule(LightningDataModule):
     def __init__(self,cfg,n_split=1):
@@ -187,4 +143,4 @@ def create_splits(cfg : DictConfig) -> None:
         json.dump(splits, json_file, indent=4)
 
 if __name__ == "__main__":
-    print_stats()
+    read_all_data()
